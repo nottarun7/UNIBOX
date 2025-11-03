@@ -1,0 +1,269 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      String   @default("member")
+  /// Hashed password for credentials auth. Nullable because OAuth users may not have one.
+  passwordHash String?
+  /// Current active team
+  activeTeamId String?
+  activeTeam   Team?   @relation("ActiveTeam", fields: [activeTeamId], references: [id], onDelete: SetNull)
+  contacts  Contact[]
+  messages  Message[]
+  notes     Note[]
+  scheduledMessages ScheduledMessage[]
+  templates MessageTemplate[]
+  // relation to TeamMember for teams this user belongs to
+  teamMemberships TeamMember[]
+  // invitations sent by this user
+  sentInvitations TeamInvitation[] @relation("InvitationSender")
+  // invitations received by this user
+  receivedInvitations TeamInvitation[] @relation("InvitationRecipient")
+  // presence tracking
+  presence Presence[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Contact {
+  id            String    @id @default(cuid())
+  name          String?
+  phone         String?
+  whatsapp      String?
+  email         String?
+  /// JSON field for social handles: { twitter: "@handle", linkedin: "url", facebook: "url", instagram: "@handle" }
+  socialHandles Json?
+  /// Tags for categorization
+  tags          String[]  @default([])
+  /// Track if this contact is a duplicate or merged
+  mergedIntoId  String?
+  mergedInto    Contact?  @relation("MergedContacts", fields: [mergedIntoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mergedFrom    Contact[] @relation("MergedContacts")
+  /// Owner of this contact
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+  messages      Message[]
+  notes         Note[]
+  threads       Thread[]
+  scheduledMessages ScheduledMessage[]
+
+  @@unique([userId, phone])
+  @@index([userId])
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  content     String
+  channel     String
+  direction   String   // "inbound" | "outbound"
+  timestamp   DateTime @default(now())
+  /// Twilio Message SID (for outbound messages)
+  messageSid  String?
+  /// Delivery/status for outbound messages
+  status      MessageStatus @default(PENDING)
+  /// Optional scheduled send time (for outbound messages)
+  scheduledAt DateTime?
+  /// Media/attachment URLs (for MMS/WhatsApp)
+  mediaUrls   String[] @default([])
+  /// Email subject (for email channel)
+  subject     String?
+  /// Mark if message has been read (for inbound messages)
+  read        Boolean  @default(false)
+  contactId   String?
+  contact     Contact? @relation(fields: [contactId], references: [id])
+  threadId    String?
+  thread      Thread?  @relation(fields: [threadId], references: [id])
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  FAILED
+  DELIVERED
+}
+
+model Note {
+  id          String   @id @default(cuid())
+  content     String
+  isPrivate   Boolean  @default(false)
+  /// User IDs mentioned in this note (for notifications)
+  mentions    String[] @default([])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  contactId   String
+  contact     Contact  @relation(fields: [contactId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Team {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String?      @unique
+  /// Team owner/creator
+  ownerId     String?
+  members     TeamMember[]
+  integrations Integration[]
+  invitations TeamInvitation[]
+  // threads scoped to this team (optional)
+  threads     Thread[]
+  // active team for users
+  activeForUsers User[] @relation("ActiveTeam")
+  // presence tracking
+  presence Presence[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  role      TeamRole @default(MEMBER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teamId, userId])
+}
+
+model TeamInvitation {
+  id          String   @id @default(cuid())
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId      String
+  email       String
+  role        TeamRole @default(MEMBER)
+  invitedBy   User     @relation("InvitationSender", fields: [invitedById], references: [id])
+  invitedById String
+  /// If the invited user already exists
+  user        User?    @relation("InvitationRecipient", fields: [userId], references: [id])
+  userId      String?
+  token       String   @unique @default(cuid())
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  acceptedAt  DateTime?
+
+  @@unique([teamId, email])
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+model Presence {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId      String
+  /// What the user is viewing: "inbox", "contact:{id}", "thread:{id}", "settings"
+  location    String
+  /// Activity: "viewing", "typing", "editing"
+  activity    String   @default("viewing")
+  /// Additional data like cursor position, current field being edited
+  metadata    Json?
+  lastSeenAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, teamId])
+  @@index([teamId, location])
+}
+
+model Integration {
+  id        String  @id @default(cuid())
+  provider  String
+  config    Json
+  team      Team?   @relation(fields: [teamId], references: [id])
+  teamId    String?
+  createdAt DateTime @default(now())
+}
+
+model Thread {
+  id         String   @id @default(cuid())
+  contact    Contact  @relation(fields: [contactId], references: [id])
+  contactId  String
+  team       Team?    @relation(fields: [teamId], references: [id])
+  teamId     String?
+  messages   Message[]
+  updatedAt  DateTime @updatedAt
+}
+
+model ScheduledMessage {
+  id          String   @id @default(cuid())
+  contactId   String
+  contact     Contact  @relation(fields: [contactId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  channel     String   // "sms" | "whatsapp" | "email"
+  content     String
+  subject     String?  // For email
+  scheduledFor DateTime
+  status      ScheduledStatus @default(PENDING)
+  templateName String? // Optional: reference to a template
+  sentMessageId String? // Reference to Message once sent
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum ScheduledStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+model MessageTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  channel     String   // "sms" | "whatsapp" | "email"
+  subject     String?  // For email
+  content     String
+  /// Variables in the template (e.g., {{name}}, {{company}})
+  variables   String[] @default([])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ScheduledJob {
+  id        String   @id @default(cuid())
+  type      String
+  payload   Json
+  runAt     DateTime
+  status    String   @default("pending") // pending | running | done | failed
+  createdAt DateTime @default(now())
+}
