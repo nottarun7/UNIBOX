@@ -61,10 +61,6 @@ A production-ready, full-stack customer engagement platform with multi-channel m
 
 ### Team Collaboration
 - Multi-team workspaces with role-based access control
-- Roles: Owner, Admin, Member, Viewer
-- Team invitations via email
-- Real-time presence tracking
-- @mentions in notes
 
 ### Unified Inbox
 - Thread-based conversations (groups messages by contact)
@@ -72,13 +68,6 @@ A production-ready, full-stack customer engagement platform with multi-channel m
 - Media attachments (MMS, WhatsApp files)
 - Read/unread status tracking
 - Cross-channel conversation history
-
-### Contact Management
-- User-isolated contacts (privacy by default)
-- Smart duplicate detection and merging
-- Custom tags and categorization
-- Multi-channel contact methods
-- Contact notes and history
 
 ---
 
