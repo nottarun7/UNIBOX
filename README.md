@@ -1794,12 +1794,6 @@ MIT License - See [LICENSE](LICENSE) for details.
 - **No Phone Required** - Works on desktop and mobile browsers
 - See [VOICE_CALLING_SETUP.md](./VOICE_CALLING_SETUP.md) for setup instructions
 
-### 👥 Team Collaboration
-- Multi-team support with role-based access (Owner, Admin, Member, Viewer)
-- Team invitations and member management
-- Real-time presence tracking
-- @mentions in notes
-
 ### 💬 Messaging
 - Unified inbox for all channels
 - Thread-based conversations
@@ -1808,11 +1802,6 @@ MIT License - See [LICENSE](LICENSE) for details.
 - Read/unread tracking
 - Email with subject lines
 
-### 📊 Contact Management
-- Smart contact deduplication
-- Contact profiles with notes
-- Custom tags and fields
-- Import/export capabilities
 
 ## Getting Started
 
