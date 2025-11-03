@@ -17,7 +17,6 @@ A production-ready, full-stack customer engagement platform with multi-channel m
 9. [Webhooks](#webhooks)
 10. [WebSocket/Real-time](#websocketreal-time)
 11. [Key Design Decisions](#key-design-decisions)
-12. [Deployment](#deployment)
 
 ---
 
@@ -144,81 +143,83 @@ erDiagram
     User ||--o{ Contact : owns
     User ||--o{ Message : sends
     User ||--o{ Note : creates
-    User ||--o{ TeamMember : "belongs to"
-    
-    Contact ||--o{ Message : "receives/sends"
-    Contact ||--o{ Thread : "has conversations in"
-    Contact ||--o{ Note : "has notes about"
-    
+    User ||--o{ TeamMember : belongs_to
+
+    Contact ||--o{ Message : receives_sends
+    Contact ||--o{ Thread : has_conversations_in
+    Contact ||--o{ Note : has_notes_about
+
     Thread ||--o{ Message : contains
     Team ||--o{ Thread : manages
     Team ||--o{ TeamMember : has
-    
+
     User {
         string id PK
-        string email UK "unique"
+        string email UK
         string name
         string role
-        string passwordHash "bcrypt hashed"
+        string passwordHash
         string activeTeamId FK
         datetime createdAt
         datetime updatedAt
     }
-    
+
     Contact {
         string id PK
-        string userId FK "owner - privacy isolation"
+        string userId FK
         string name
-        string phone "E.164 format"
-        string whatsapp "E.164 format"
+        string phone
+        string whatsapp
         string email
         json socialHandles
         string[] tags
         datetime createdAt
         datetime updatedAt
-        UK userId_phone "unique per user"
+        UK userId_phone
     }
-    
+
     Message {
         string id PK
         string content
-        string channel "sms|whatsapp|email"
-        string direction "inbound|outbound"
-        string status "PENDING|SENT|FAILED|DELIVERED"
+        string channel
+        string direction
+        string status
         string contactId FK
-        string userId FK "sender if outbound"
+        string userId FK
         string threadId FK
-        string messageSid "Twilio SID for tracking"
+        string messageSid
         string[] mediaUrls
-        string subject "for email"
+        string subject
         boolean read
         datetime timestamp
     }
-    
+
     Thread {
         string id PK
         string contactId FK
-        string teamId FK "null for personal"
+        string teamId FK
         datetime lastMessageAt
         datetime createdAt
         datetime updatedAt
     }
-    
+
     Team {
         string id PK
         string name
         string ownerId FK
         datetime createdAt
     }
-    
+
     TeamMember {
         string id PK
         string userId FK
         string teamId FK
-        string role "OWNER|ADMIN|MEMBER|VIEWER"
+        string role
         datetime joinedAt
         UK userId_teamId
     }
+}
+
 ```
 
 ---
@@ -1739,183 +1740,6 @@ const userMapping = {
 
 ---
 
-## Deployment
-
-### Vercel (Recommended)
-
-**Why Vercel:**
-- Native Next.js support
-- Edge functions for low latency
-- Automatic HTTPS and CDN
-- Environment variable management
-- Free tier for personal projects
-
-**Deployment Steps**:
-
-1. **Push to GitHub**:
-```bash
-git remote add origin https://github.com/yourusername/unibox.git
-git add .
-git commit -m "Initial commit"
-git push -u origin main
-```
-
-2. **Import to Vercel**:
-- Go to [vercel.com/new](https://vercel.com/new)
-- Click "Import Project"
-- Select your GitHub repository
-- Vercel auto-detects Next.js settings
-
-3. **Configure Environment Variables**:
-- In Vercel dashboard → Settings → Environment Variables
-- Copy all variables from `.env` file
-- Set for Production, Preview, and Development environments
-
-4. **Deploy**:
-- Click "Deploy"
-- Vercel builds and deploys automatically
-- Get production URL (e.g., `https://unibox.vercel.app`)
-
-5. **Update Webhooks**:
-- Twilio Console → Phone Numbers → Configure Messaging
-- Set webhook URL to: `https://unibox.vercel.app/api/webhooks/twilio`
-- TwiML App Voice URL: `https://unibox.vercel.app/api/twilio/voice`
-
-6. **Update Environment Variables**:
-```bash
-NEXTAUTH_URL="https://unibox.vercel.app"
-NEXT_PUBLIC_BASE_URL="https://unibox.vercel.app"
-```
-
-**Post-Deployment Checklist**:
-- [ ] Test signup/signin flow
-- [ ] Send test SMS
-- [ ] Send test WhatsApp message
-- [ ] Send test email
-- [ ] Make test voice call
-- [ ] Verify inbound webhook receives messages
-- [ ] Check database for test data
-
-### Manual Deployment (Any Server)
-
-**Requirements**:
-- Node.js 20+
-- PostgreSQL database
-- HTTPS endpoint (required for Twilio webhooks)
-- 512MB RAM minimum (1GB recommended)
-
-**Steps**:
-
-1. **Build Production Bundle**:
-```bash
-npm run build
-# Creates .next/ directory with optimized code
-```
-
-2. **Start Production Server**:
-```bash
-npm start
-# Runs: node .next/standalone/server.js
-```
-
-3. **Using PM2 (Process Manager)**:
-```bash
-npm install -g pm2
-pm2 start npm --name "unibox" -- start
-pm2 save
-pm2 startup  # Auto-start on server reboot
-```
-
-4. **Nginx Reverse Proxy**:
-```nginx
-server {
-  listen 80;
-  server_name unibox.yourdomain.com;
-  
-  location / {
-    proxy_pass http://localhost:3000;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-}
-```
-
-5. **SSL Certificate (Let's Encrypt)**:
-```bash
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d unibox.yourdomain.com
-```
-
-**Environment Variables** (`.env`):
-```bash
-NODE_ENV=production
-PORT=3000
-DATABASE_URL="your_production_database_url"
-NEXTAUTH_URL="https://unibox.yourdomain.com"
-# ... other credentials
-```
-
-### Docker Deployment
-
-**Dockerfile**:
-```dockerfile
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npx prisma generate
-RUN npm run build
-
-FROM node:20-alpine
-WORKDIR /app
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-EXPOSE 3000
-CMD ["npm", "start"]
-```
-
-**docker-compose.yml**:
-```yaml
-version: '3.8'
-services:
-  app:
-    build: .
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    depends_on:
-      - postgres
-  
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_PASSWORD: yourpassword
-      POSTGRES_DB: unibox
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
-```
-
-**Deploy**:
-```bash
-docker-compose up -d
-```
-
----
-
-## Troubleshooting
-
-### Common Issues
 
 **1. "Can't reach database server"**
 - Check DATABASE_URL is correct
@@ -1953,27 +1777,6 @@ docker-compose up -d
 MIT License - See [LICENSE](LICENSE) for details.
 
 ---
-
-## Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
-
----
-
-## Support
-
-- **GitHub Issues**: [Report bugs](https://github.com/yourusername/unibox/issues)
-- **Discussions**: [Ask questions](https://github.com/yourusername/unibox/discussions)
-- **Email**: support@yourdomain.com
-
----
-
-**Built with Next.js, TypeScript, Prisma, and Twilio**
 
 
 ## ✨ Features
